@@ -1,6 +1,6 @@
 # Horni-Client
 
-Instantiate client connections to of Noli's [Horni API](https://gitlab.com/nolialsea/horni-api) to generate the AI results.
+Instantiate client connections to Noli's [Horni API](https://gitlab.com/nolialsea/horni-api) to generate the AI results.
 
 You have to connect to a running instance of the server for it to work.
 
