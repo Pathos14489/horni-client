@@ -5,8 +5,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export default class HorniClient {
-    static vocab = JSON.parse(fs.readFileSync(__dirname+`/vocab.json`))
-    static indexed_vocab = JSON.parse(fs.readFileSync(__dirname+`/vocabIndexed.json`))
+    static vocab = JSON.parse(fs.readFileSync(__dirname+`/vocabs/vocab.json`))
+    static indexed_vocab = JSON.parse(fs.readFileSync(__dirname+`/vocabs/vocabIndexed.json`))
 
     /**
      * @param {Object} default_prompt_settings
