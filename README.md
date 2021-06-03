@@ -1,6 +1,6 @@
-# Simple Prompt Module
+# Horni-Client
 
-Simple NodeJS Module for connecting to Noli's Horni API(linked below).
+Simple NodeJS module for connecting client instances to Horni API servers.
 
 ## Example
 
