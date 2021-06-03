@@ -1,6 +1,8 @@
-# Simple Prompt Module
+# Horni-Client
 
-Simple NodeJS Module for connecting to Noli's Horni API(linked below).
+Instantiate client connections to Noli's [Horni API](https://gitlab.com/nolialsea/horni-api) to generate the AI results.
+
+You have to connect to a running instance of the server for it to work.
 
 ## Example
 
@@ -13,13 +15,3 @@ Simple NodeJS Module for connecting to Noli's Horni API(linked below).
 		//		"Returns an array of generated responses equal to the nb_number option."
 		// ]
 	})()
-
-# Prerequisites
-
-Is project uses Noli's [Horni API](https://gitlab.com/nolialsea/horni-api) to generate the AI results
-
-You have to install and run it in order for simple prompt to work
-
-# Install & Run (requires AI API to run too)
-
-`npm i` installs requirements
