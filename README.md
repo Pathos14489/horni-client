@@ -16,10 +16,6 @@ Simple NodeJS module for connecting client instances to Horni API servers.
 
 # Prerequisites
 
-Is project uses Noli's [Horni API](https://gitlab.com/nolialsea/horni-api) to generate the AI results
+This project connects to instances of Noli's [Horni API](https://gitlab.com/nolialsea/horni-api) to generate the AI results.
 
-You have to install and run it in order for simple prompt to work
-
-# Install & Run (requires AI API to run too)
-
-`npm i` installs requirements
+You have to connect to a running instance of the server for it to work.
