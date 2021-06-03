@@ -1,5 +1,5 @@
 {
-  "name": "Prompt",
+  "name": "horni-client",
   "version": "1.0.0",
   "description": "Class for instantiating connections to Horni API servers.",
   "main": "index.js",
