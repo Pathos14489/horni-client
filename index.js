@@ -1,8 +1,12 @@
 import axios from 'axios'
 import fs from "fs"
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 export default class HorniClient {
-    static vocab = JSON.parse(fs.readFileSync(`./noli-modules/simple-prompt-main/vocab.json`))
-    static indexed_vocab = JSON.parse(fs.readFileSync(`./noli-modules/simple-prompt-main/vocabIndexed.json`))
+    static vocab = JSON.parse(fs.readFileSync(__dirname+`/vocab.json`))
+    static indexed_vocab = JSON.parse(fs.readFileSync(__dirname+`/vocabIndexed.json`))
 
     /**
      * @param {Object} default_prompt_settings
@@ -33,7 +37,7 @@ export default class HorniClient {
         if(!default_prompt_settings.prevent_angle_brackets) default_prompt_settings.prevent_angle_brackets = false
         if(!default_prompt_settings.prevent_curly_brackets) default_prompt_settings.prevent_curly_brackets = false
         this.nb_answer = default_prompt_settings.nb_answer
-        this.nb_answer = default_prompt_settings.nb_answer
+        this.number_generated_tokens = default_prompt_settings.number_generated_tokens
         this.temperature = default_prompt_settings.temperature
         this.top_k = default_prompt_settings.top_k
         this.top_p = default_prompt_settings.top_p
@@ -49,18 +53,21 @@ export default class HorniClient {
         this.prevent_curly_brackets = default_prompt_settings.prevent_curly_brackets
     }
     /**
-     * Returns an AI generated text continuing your prompt
+     * Returns an array of AI generated text continuing your prompt
      * Retries until fulfillment
      * @param {String} prompt
      * @param {Object} opts
+     * @returns {Promise} [String]
      */
     getPromptAsync(prompt, opts) {
         return new Promise((resolve, reject) => {
             this.getPrompt(prompt, opts, (answer, err) => {
-                if (answer)
+                if (answer){
                     resolve(answer)
-                else if (err)
+                }else if (err){
+                    console.trace(err)
                     reject()
+                }
             })
         })
     }
@@ -103,6 +110,7 @@ export default class HorniClient {
                     reject()
                 }
             } catch (error) {
+                console.trace(err)
                 reject(error)
             }
         })
@@ -118,7 +126,7 @@ export default class HorniClient {
             if(!opts) opts = {}
             opts.prompt = prompt
             if(!opts.nb_answer) opts.nb_answer = this.nb_answer
-            if(!opts.number_generated_tokens) opts.nb_answer = this.nb_answer
+            if(!opts.number_generated_tokens) opts.number_generated_tokens = this.number_generated_tokens
             if(!opts.temperature) opts.temperature = this.temperature
             if(!opts.top_k) opts.top_k = this.top_k
             if(!opts.top_p) opts.top_p = this.top_p
@@ -132,14 +140,17 @@ export default class HorniClient {
             if(!opts.prevent_square_brackets) opts.prevent_square_brackets = this.prevent_square_brackets
             if(!opts.prevent_angle_brackets) opts.prevent_angle_brackets = this.prevent_angle_brackets
             if(!opts.prevent_curly_brackets) opts.prevent_curly_brackets = this.prevent_curly_brackets
+            console.log(`${this.apiURL}/prompt`,opts);
             var result = await axios.post(`${this.apiURL}/prompt`, opts)
             const answer = result.data
             if (answer) {
                 callback(answer)
             } else {
+                console.trace("No Answer")
                 callback(null, true)
             }
         } catch (err) {
+            console.trace(err)
             callback(null, true)
         }
     }
