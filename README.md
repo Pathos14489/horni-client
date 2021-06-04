@@ -7,11 +7,12 @@ You have to connect to a running instance of the server for it to work.
 ## Example
 
 	import HorniClient from "./horni-client" // const HorniClient = require("./horni-client")
-	(()=>{ //Async Wrapper
-		var client = new HorniClient({"apiURL":"http://localhost:5000"}) // Instantiate Client
-		var responses = await client.sendPrompt("This is an example message.",{"number_generated_tokens":20,"nb_answer":1})
-		console.log(responses)
-		// Output: [
-		//		"Returns an array of generated responses equal to the nb_number option."
-		// ]
-	})()
+	const client = new HorniClient()
+	(async()=>{
+		console.log(`Running Horni Test...\n`);
+		var input       = `This is a`
+		var generation  = await client.sendPrompt(input)
+		var tokens      = generation.prompt.tokens.length+generation.results[0].tokens.length
+		var output      = `${generation.total_elapsed_time}ms | ${tokens} Tokens w/prompt | ${input}${generation.results[0].content}`
+		console.log(output);
+	})
