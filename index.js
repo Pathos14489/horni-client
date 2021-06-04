@@ -14,7 +14,24 @@ export default class HorniClient {
      */
     constructor(apiURL = `http://localhost:5000`, default_prompt_settings = {}) {
         this.apiURL = apiURL
-        Object.assign(this, default_prompt_settings)
+        // Intentionally setting the default values here instead of letting it be handled at the API level
+        default_prompt_settings.nb_answer                   = default_prompt_settings.nb_answer ?? 1
+        default_prompt_settings.number_generated_tokens     = default_prompt_settings.number_generated_tokens ?? 20
+        default_prompt_settings.temperature                 = default_prompt_settings.temperature ?? 0.8
+        default_prompt_settings.top_k                       = default_prompt_settings.top_k ?? 60
+        default_prompt_settings.top_p                       = default_prompt_settings.top_p ?? 0.9
+        default_prompt_settings.tail_free_sampling          = default_prompt_settings.tail_free_sampling ?? 0.95
+        default_prompt_settings.repetition_penalty          = default_prompt_settings.repetition_penalty ?? 2.0
+        default_prompt_settings.repetition_penalty_range    = default_prompt_settings.repetition_penalty_range ?? 512
+        default_prompt_settings.repetition_penalty_slope    = default_prompt_settings.repetition_penalty_slope ?? 3.33
+        default_prompt_settings.enable_tfs                  = default_prompt_settings.enable_tfs ?? false
+        default_prompt_settings.enable_top_k                = default_prompt_settings.enable_top_k ?? true
+        default_prompt_settings.enable_top_p                = default_prompt_settings.enable_top_p ?? true
+        default_prompt_settings.prevent_square_brackets     = default_prompt_settings.prevent_square_brackets ?? false
+        default_prompt_settings.prevent_angle_brackets      = default_prompt_settings.prevent_angle_brackets ?? false
+        default_prompt_settings.prevent_curly_brackets      = default_prompt_settings.prevent_curly_brackets ?? false
+        default_prompt_settings.banned_token_indexes        = default_prompt_settings.banned_token_indexes ?? []
+        Object.assign(this, default_prompt_settings) // Assigns default_prompt_settings properties to this
     }
 
     /**
