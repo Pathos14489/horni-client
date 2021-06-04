@@ -1,11 +1,11 @@
 import axios from 'axios'
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const vocab = require('./vocab.json')
-const vocabIndexed = require('./vocabIndexed.json')
-
+const __dirname = dirname(fileURLToPath(import.meta.url));
 export default class HorniClient {
-    static vocab = vocab
-    static indexedVocab = vocabIndexed
+    static vocab = JSON.parse(fs.readFileSync(__dirname+`/vocabs/vocab.json`))
+    static indexed_vocab = JSON.parse(fs.readFileSync(__dirname+`/vocabs/vocabIndexed.json`))
 
     /**
      * @param apiURL
