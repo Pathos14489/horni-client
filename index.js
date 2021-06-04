@@ -15,7 +15,6 @@ export default class HorniClient {
     constructor(apiURL = `http://localhost:5000`, default_prompt_settings = {}) {
         this.apiURL = apiURL
         Object.assign(this, default_prompt_settings)
-        console.log(this)
     }
 
     /**
