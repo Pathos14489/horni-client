@@ -91,11 +91,11 @@ export default class HorniClient {
      * @return {Promise<unknown>}
      */
     async sendPostRequest(url, data) {
-        return new Promise(async(accept, reject) => {
+        return new Promise(async(resolve, reject) => {
             try {
                 const answer = (await axios.post(url, data)).data
                 if (answer) {
-                    accept(answer)
+                    resolve(answer)
                 } else {
                     console.trace("No Answer")
                     reject()
