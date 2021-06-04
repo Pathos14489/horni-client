@@ -4,9 +4,12 @@ Instantiate client connections to Noli's [Horni API](https://gitlab.com/nolialse
 
 You have to connect to a running instance of the server for it to work.
 
+## Install
+	npm install horni-client
+
 ## Example
 
-	import HorniClient from "./horni-client" // const HorniClient = require("./horni-client")
+	import HorniClient from "horni-client" // const HorniClient = require("horni-client")
 	const client = new HorniClient()
 	(async()=>{
 		console.log(`Running Horni Test...\n`);
