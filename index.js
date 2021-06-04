@@ -32,6 +32,8 @@ export default class HorniClient {
         default_prompt_settings.prevent_curly_brackets      = default_prompt_settings.prevent_curly_brackets ?? false
         default_prompt_settings.banned_token_indexes        = default_prompt_settings.banned_token_indexes ?? []
         Object.assign(this, default_prompt_settings) // Assigns default_prompt_settings properties to this
+        var test = this.getTokens("test") // Sends the server a test request
+        if(!test) throw "Can't connect to Horni API Server..."
     }
 
     /**
@@ -43,7 +45,7 @@ export default class HorniClient {
         if (!prompt) throw new Error("Prompt argument is mandatory")
         const tokens = (await this.sendPostRequest(`${this.apiURL}/tokens`, {prompt}))
         return tokens.map((token) => [
-            token, vocabIndexed[token]
+            token, HorniClient.indexed_vocab[token]
         ])
     }
 
@@ -57,7 +59,7 @@ export default class HorniClient {
         if (!prompt) throw new Error("String argument is mandatory")
 
         const tokenString = (await this.getTokens(prompt))
-            .map((token) => vocabIndexed[token])
+            .map((token) => HorniClient.indexed_vocab[token])
             .join('')
 
         const tokens = (await this.sendPostRequest(`${this.apiURL}/string-tokens`, {
@@ -66,7 +68,7 @@ export default class HorniClient {
         }))
 
         return tokens.map((token) => [
-            token, vocabIndexed[token]
+            token, HorniClient.indexed_vocab[token]
         ])
     }
 
@@ -88,22 +90,20 @@ export default class HorniClient {
      * @param data
      * @return {Promise<unknown>}
      */
-    sendPostRequest(url, data) {
-        return new Promise((accept, reject) => {
-            axios.post(url, data)
-                .then((result) => {
-                    const answer = result.data
-                    if (answer) {
-                        accept(answer)
-                    } else {
-                        console.trace("No Answer")
-                        reject()
-                    }
-                })
-                .catch((err) => {
-                    console.trace(err)
+    async sendPostRequest(url, data) {
+        return new Promise(async(accept, reject) => {
+            try {
+                const answer = (await axios.post(url, data)).data
+                if (answer) {
+                    accept(answer)
+                } else {
+                    console.trace("No Answer")
                     reject()
-                })
+                }
+            } catch (error) {
+                console.trace(error)
+                reject()
+            }
         })
     }
 }
