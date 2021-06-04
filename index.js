@@ -79,10 +79,12 @@ export default class HorniClient {
                     if (answer) {
                         accept(answer)
                     } else {
+                        console.trace("No Answer")
                         reject()
                     }
                 })
-                .catch(() => {
+                .catch((err) => {
+                    console.trace(err)
                     reject()
                 })
         })
