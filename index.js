@@ -40,7 +40,7 @@ export default class HorniClient {
         if(!test) throw "Can't connect to Horni API Server..."
 
         //Checks queue
-        this.queueChecker = new CronJob(`*/1 * * * * *`, checkQueue,()=>{},false,"GMT");
+        this.queueChecker = new CronJob(`*/1 * * * * *`,this.checkQueue,()=>{},false,"GMT");
     }
     async checkQueue(){
         if(this.queue.length<1) {if(this.useQueueChecker) this.queueChecker.stop()}
