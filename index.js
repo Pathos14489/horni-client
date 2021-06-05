@@ -13,10 +13,11 @@ export default class HorniClient {
      * @param apiURL
      * @param {Object} default_prompt_settings
      */
-    constructor(apiURL = `http://localhost:5000`, default_prompt_settings = {}) {
-        this.apiURL = apiURL
+    constructor(default_prompt_settings = { apiURL:`http://localhost:5000` }) {
+        this.apiURL = default_prompt_settings.apiURL
         this.generating = false // For tracking when a generation is in progress
         this.queue = []
+        this.useQueueChecker = true
         // Intentionally setting the default values here instead of letting it be handled at the API level
         default_prompt_settings.nb_answer                   = default_prompt_settings.nb_answer ?? 1
         default_prompt_settings.number_generated_tokens     = default_prompt_settings.number_generated_tokens ?? 20
@@ -39,19 +40,19 @@ export default class HorniClient {
         if(!test) throw "Can't connect to Horni API Server..."
 
         //Checks queue
-        this.queueChecker = new CronJob(`*/1 * * * * *`, async()=>{
-            if(this.queue.length<1) this.queueChecker.stop()
-            // console.log(this.queue); // Debug output
-            if(!this.generating && this.queue.length>0){
-                var prompt = this.queue.shift() // Gets latest
-                // var elapsedTime = Date.now()-prompt.timestamp
-                // console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
-                var responses = await this.sendPrompt(prompt.prompt)
-                prompt.resolve(responses)
-            }
-        },()=>{},false,"GMT");
+        this.queueChecker = new CronJob(`*/1 * * * * *`, checkQueue,()=>{},false,"GMT");
     }
-
+    async checkQueue(){
+        if(this.queue.length<1) {if(this.useQueueChecker) this.queueChecker.stop()}
+        // console.log(this.queue); // Debug output
+        if(!this.generating && this.queue.length>0){
+            var prompt = this.queue.shift() // Gets latest
+            // var elapsedTime = Date.now()-prompt.timestamp
+            // console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
+            var responses = await this.sendPrompt(prompt.prompt)
+            prompt.resolve(responses)
+        }
+    }
     /**
      * Sends a text and returns token indexes
      * @param prompt
@@ -103,7 +104,7 @@ export default class HorniClient {
                         resolve,
                         timestamp:Date.now()
                     })
-                    this.queueChecker.start()
+                    if(this.useQueueChecker) this.queueChecker.start()
                 }else{
                     this.generating = true
                     var response = await this.sendPostRequest(`${this.apiURL}/prompt`, this.default_prompt_settings)
