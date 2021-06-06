@@ -2,7 +2,6 @@ import fs from 'fs'
 import axios from 'axios'
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { CronJob } from "cron"
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export default class HorniClient {
@@ -13,12 +12,13 @@ export default class HorniClient {
      * @param apiURL
      * @param {Object} default_prompt_settings
      */
-    constructor(default_prompt_settings = { apiURL:`http://localhost:5000` }) {
-        this.apiURL = default_prompt_settings.apiURL
+    constructor(default_prompt_settings = {}) {
         this.generating = false // For tracking when a generation is in progress
         this.queue = []
+        this.verbose = false
         this.useQueueChecker = true
         // Intentionally setting the default values here instead of letting it be handled at the API level
+        default_prompt_settings.apiURL                      = default_prompt_settings.apiURL ?? `http://localhost:5000`
         default_prompt_settings.nb_answer                   = default_prompt_settings.nb_answer ?? 1
         default_prompt_settings.number_generated_tokens     = default_prompt_settings.number_generated_tokens ?? 20
         default_prompt_settings.temperature                 = default_prompt_settings.temperature ?? 0.8
@@ -35,22 +35,27 @@ export default class HorniClient {
         default_prompt_settings.prevent_angle_brackets      = default_prompt_settings.prevent_angle_brackets ?? false
         default_prompt_settings.prevent_curly_brackets      = default_prompt_settings.prevent_curly_brackets ?? false
         default_prompt_settings.banned_token_indexes        = default_prompt_settings.banned_token_indexes ?? []
+        this.apiURL                                         = default_prompt_settings.apiURL
+        delete default_prompt_settings.apiURL
         this.default_prompt_settings = default_prompt_settings
-        var test = this.getTokens("test") // Sends the server a test request
+        var test = this.healthCheck() // Sends the server a test request
         if(!test) throw "Can't connect to Horni API Server..."
-
-        //Checks queue
-        this.queueChecker = new CronJob(`*/1 * * * * *`,this.checkQueue,()=>{},false,"GMT");
+        else console.log(test);
     }
     async checkQueue(){
-        if(this.queue.length<1) {if(this.useQueueChecker) this.queueChecker.stop()}
-        // console.log(this.queue); // Debug output
-        if(!this.generating && this.queue.length>0){
-            var prompt = this.queue.shift() // Gets latest
-            // var elapsedTime = Date.now()-prompt.timestamp
-            // console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
-            var responses = await this.sendPrompt(prompt.prompt)
-            prompt.resolve(responses)
+        if(!this.queue) this.queue = []
+        console.log("Check Loop",this.queue,this.queue.length);
+        if(this.queue.length>0) {
+            if(this.verbose) console.log(this.queue); // Debug output
+            if(!this.generating){
+                var prompt = this.queue.shift() // Gets latest
+                // var elapsedTime = Date.now()-prompt.timestamp
+                if(this.verbose) console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
+                var responses = await this.sendPrompt(prompt.prompt)
+                prompt.resolve(responses)
+            }
+        }else{
+            throw "Queue is empty!"
         }
     }
     /**
@@ -64,6 +69,9 @@ export default class HorniClient {
         return tokens.map((token) => [
             token, HorniClient.indexed_vocab[token]
         ])
+    }
+    async healthCheck() {
+        return await axios(`${this.apiURL}/health-check`)
     }
 
     /**
@@ -99,16 +107,18 @@ export default class HorniClient {
             try {
                 this.default_prompt_settings.prompt = prompt
                 if(this.generating){
+                    if(!this.queue) this.queue = []
                     this.queue.push({
                         prompt,
                         resolve,
+                        reject,
                         timestamp:Date.now()
                     })
-                    if(this.useQueueChecker) this.queueChecker.start()
                 }else{
                     this.generating = true
                     var response = await this.sendPostRequest(`${this.apiURL}/prompt`, this.default_prompt_settings)
                     this.generating = false
+                    if(this.queue.length>0) this.checkQueue()
                     resolve(response)
                 }
             } catch (error) {
@@ -126,13 +136,15 @@ export default class HorniClient {
      * @return {Promise<unknown>}
      */
     async sendPostRequest(url, data) {
+        if(this.verbose) console.log("Sending Request",data);
         return new Promise(async(resolve, reject) => {
             try {
                 const answer = (await axios.post(url, data)).data
                 if (answer) {
+                    if(this.verbose) console.log("Return Request",answer);
                     resolve(answer)
                 } else {
-                    console.trace("No Answer")
+                    if(this.verbose) console.trace("No Answer")
                     reject()
                 }
             } catch (error) {
