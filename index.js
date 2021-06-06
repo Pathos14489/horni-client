@@ -38,9 +38,7 @@ export default class HorniClient {
         this.apiURL                                         = default_prompt_settings.apiURL
         delete default_prompt_settings.apiURL
         this.default_prompt_settings = default_prompt_settings
-        var test = this.healthCheck() // Sends the server a test request
-        if(!test) throw "Can't connect to Horni API Server..."
-        else console.log(test);
+        this.healthCheck()
     }
     async checkQueue(){
         if(!this.queue) this.queue = []
@@ -71,7 +69,8 @@ export default class HorniClient {
         ])
     }
     async healthCheck() {
-        return await axios(`${this.apiURL}/health-check`)
+        var res = await axios(`${this.apiURL}/health_check`)
+        if(!res || res.data != "ok") console.error("Horni API Health Check Failed!")
     }
 
     /**
