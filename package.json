@@ -1,6 +1,6 @@
 {
   "name": "horni-client",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Class for instantiating connections to Horni API servers.",
   "scripts": {
     "metrics": "node ./metrics.js",
