@@ -2,6 +2,7 @@ import fs from 'fs'
 import axios from 'axios'
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import tokenizer from "gpt-3-encoder"
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export default class HorniClient {
@@ -13,14 +14,24 @@ export default class HorniClient {
      * @param {Object} default_prompt_settings
      */
     constructor(default_prompt_settings = {}) {
+        this.initialized = false
         this.generating = false // For tracking when a generation is in progress
         this.queue = []
-        this.verbose = false
+        this.verbose = default_prompt_settings.verbose ?? false
         this.useQueueChecker = true
+        this.generations = 0
+        this.getTokenRequests = {
+            requested:0,
+            successful:0
+        }
+        this.priority = 0.6 //2.7B:1 | 6B:0.6  TO-DO: Eventually having this be determined by the health-check, maybe if that also returned what model the server was hosting. The idea is for the server priority to self scale with generation times, model type(2.7B/6B), and the ratio between number of total generations, and how many are labeled as retries.
+        this.responseTimes = []
+        this.generationTimes = []
+        this.startTime = Date.now()
         // Intentionally setting the default values here instead of letting it be handled at the API level
         default_prompt_settings.apiURL                      = default_prompt_settings.apiURL ?? `http://localhost:5000`
         default_prompt_settings.nb_answer                   = default_prompt_settings.nb_answer ?? 1
-        default_prompt_settings.number_generated_tokens     = default_prompt_settings.number_generated_tokens ?? 20
+        default_prompt_settings.number_generated_tokens     = default_prompt_settings.number_generated_tokens ?? 64
         default_prompt_settings.temperature                 = default_prompt_settings.temperature ?? 0.8
         default_prompt_settings.top_k                       = default_prompt_settings.top_k ?? 60
         default_prompt_settings.top_p                       = default_prompt_settings.top_p ?? 0.9
@@ -35,19 +46,125 @@ export default class HorniClient {
         default_prompt_settings.prevent_angle_brackets      = default_prompt_settings.prevent_angle_brackets ?? false
         default_prompt_settings.prevent_curly_brackets      = default_prompt_settings.prevent_curly_brackets ?? false
         default_prompt_settings.banned_token_indexes        = default_prompt_settings.banned_token_indexes ?? []
+        default_prompt_settings.banned_strings              = default_prompt_settings.banned_strings ?? []
         this.apiURL                                         = default_prompt_settings.apiURL
         delete default_prompt_settings.apiURL
         this.default_prompt_settings = default_prompt_settings
         this.healthCheck()
     }
+    /**
+     * Gets client statistics
+     */
+    get stats(){
+        if(!this.initialized) throw "Client not initialized!"
+        var last25 = this.responseTimes.slice(this.responseTimes.length-25,this.responseTimes.length)
+
+        var recentOutputTokens = last25.map(x=>x.outputTokens)
+        var recentOutputAverage = recentOutputTokens.reduce((a,b)=>a+b)/25
+
+        var recentInputTokens = last25.map(x=>x.inputTokens)
+        var recentInputAverage = recentInputTokens.reduce((a,b)=>a+b)/25
+
+        var inputResponses = last25.map(x=>(x.time/x.inputTokens))
+        var inputResponsesAverage = (inputResponses.reduce((a,b)=>a+b))/25
+
+        var outputResponses = last25.map(x=>(x.time/x.outputTokens))
+        var outputResponsesAverage = (outputResponses.reduce((a,b)=>a+b))/25
+
+        var timings25 = {
+            averageResponseTimePerInputToken:inputResponsesAverage,
+            averageResponseTimePerOutputToken:outputResponsesAverage,
+        }
+        var appeal = ((this.priority*(recentOutputAverage/this.averageTokenTimes.averageResponseTimePerOutputToken))*this.queueSize)*this.generating?2:1
+        return {
+            appeal,
+            recentOutputAverage,
+            recentInputAverage,
+            recentTimings:timings25,
+            generationStats:{
+                count:this.generations,
+                timings:this.averageTokenTimes
+            }
+        }
+    }
+    /**
+     * Returns the appeal rating of the client. Faster client have lower appeal scores, the closer to 0 they are, the more appealing it is to use them.
+     */
+    get appeal(){
+        if(!this.initialized) throw "Client not initialized!"
+        return this.stats.appeal
+    }
+    get averageResponseTime(){
+        if(!this.initialized) throw "Client not initialized!"
+        var times = this.responseTimes.map(x=>x.time)
+        return (times.reduce((a,b)=>a+b))/this.responseTimes.length
+    }
+    get averageGenerationTime(){
+        if(!this.initialized) throw "Client not initialized!"
+        var times = this.generationTimes.map(x=>x.time)
+        return (times.reduce((a,b)=>a+b))/this.generationTimes.length
+    }
+    get averageTokenTimes(){
+        if(!this.initialized) throw "Client not initialized!"
+        var inputGenerations = this.generationTimes.map(x=>(x.time/x.inputTokens))
+        var inputGenerationsAverage = (inputGenerations.reduce((a,b)=>a+b))/inputGenerations.length
+        var outputGenerations = this.generationTimes.map(x=>(x.time/x.outputTokens))
+        var outputGenerationsAverage = (outputGenerations.reduce((a,b)=>a+b))/outputGenerations.length
+        var inputResponses = this.responseTimes.map(x=>(x.time/x.inputTokens))
+        var inputResponsesAverage = (inputResponses.reduce((a,b)=>a+b))/inputResponses.length
+        var outputResponses = this.responseTimes.map(x=>(x.time/x.outputTokens))
+        var outputResponsesAverage = (outputResponses.reduce((a,b)=>a+b))/outputResponses.length
+        return {
+            averageResponseTimePerInputToken:inputResponsesAverage,
+            averageResponseTimePerOutputToken:outputResponsesAverage,
+            averageGenerationTimePerInputToken:inputGenerationsAverage,
+            averageGenerationTimePerOutputToken:outputGenerationsAverage,
+        }
+    }
+    get queueSize(){
+        if(!this.initialized) throw "Client not initialized!"
+        return this.queue.length
+    }
+    get totalGeneratedTokens(){
+        if(!this.initialized) throw "Client not initialized!"
+        var outputGenerations = this.generationTimes.map(x=>x.outputTokens)
+        return (outputGenerations.reduce((a,b)=>a+b))
+    }
+    get averageInputTokens(){
+        if(!this.initialized) throw "Client not initialized!"
+        var inputGenerations = this.generationTimes.map(x=>x.inputTokens)
+        return (inputGenerations.reduce((a,b)=>a+b))/inputGenerations.length
+    }
+    get averageOutputTokens(){
+        if(!this.initialized) throw "Client not initialized!"
+        return this.totalGeneratedTokens/this.generationTimes.length
+    }
+    async initializeMetrics(){
+        if(this.verbose) console.log(`Running Horni-Client Metrics Initialization...\n`);
+        var startTime           = Date.now()
+        var input               = `This is a`
+        var testCount           = 25
+        var tests = []
+        for (let index = 0; index < testCount; index++) tests.push(this.sendPrompt(input)) // Adds tests to list.
+        var completedTests      = await Promise.all(tests)
+        var clientTimeElapsed   = Date.now()-startTime
+        var serverTime          = completedTests.map((a)=>a.total_elapsed_time)
+        var totalServerTime     = serverTime.reduce((a,b)=>a+b)
+        var testResults         = completedTests.map(test=>input+test.results[0].content)
+        var output              = `Tokens Per Request: ${this.default_prompt_settings.number_generated_tokens} - Request Count: ${testCount} - Server Generation Time: ${totalServerTime}ms - Latency: ${`${clientTimeElapsed-totalServerTime}`.split(".")[0]}ms}` 
+        if(this.verbose) console.log(testResults);
+        if(this.verbose) console.log(output);
+        if(this.verbose) console.log(this.stats);
+        this.initialized = true
+    }
     async checkQueue(){
         if(!this.queue) this.queue = []
-        console.log("Check Loop",this.queue,this.queue.length);
+        if(this.verbose) console.log("Check Loop",this.queue,this.queue.length);
         if(this.queue.length>0) {
             if(this.verbose) console.log(this.queue); // Debug output
             if(!this.generating){
                 var prompt = this.queue.shift() // Gets latest
-                // var elapsedTime = Date.now()-prompt.timestamp
+                var elapsedTime = Date.now()-prompt.timestamp
                 if(this.verbose) console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
                 var responses = await this.sendPrompt(prompt.prompt)
                 prompt.resolve(responses)
@@ -59,14 +176,18 @@ export default class HorniClient {
     /**
      * Sends a text and returns token indexes
      * @param prompt
-     * @return {Promise<number[]>} token indexes
+     * @return Array of token indexes
      */
-    async getTokens(prompt) {
-        if (!prompt) throw new Error("Prompt argument is mandatory")
-        const tokens = (await this.sendPostRequest(`${this.apiURL}/tokens`, {prompt}))
-        return tokens.map((token) => [
-            token, HorniClient.indexed_vocab[token]
-        ])
+    getTokens(prompt) {
+        return tokenizer.encode(prompt)
+    }
+    /**
+     * Sends a text and returns token indexes
+     * @param tokens
+     * @return {String} String representation of token array.
+     */
+    getString(tokens) {
+        return tokenizer.decode(tokens)
     }
     async healthCheck() {
         var res = await axios(`${this.apiURL}/health_check`)
@@ -101,23 +222,37 @@ export default class HorniClient {
      * @param prompt
      * @return {Promise<string[]>} list of results (size defined by nb_answer option)
      */
-    async sendPrompt(prompt = "") {
+    async sendPrompt(prompt = "",) {
         return new Promise(async(resolve, reject) => {
             try {
-                this.default_prompt_settings.prompt = prompt
+                var responseGot = Date.now()
                 if(this.generating){
                     if(!this.queue) this.queue = []
                     this.queue.push({
                         prompt,
                         resolve,
                         reject,
-                        timestamp:Date.now()
+                        timestamp:responseGot
                     })
                 }else{
+                    this.default_prompt_settings.prompt = prompt
                     this.generating = true
                     var response = await this.sendPostRequest(`${this.apiURL}/prompt`, this.default_prompt_settings)
                     this.generating = false
                     if(this.queue.length>0) this.checkQueue()
+                    this.generations++
+                    if(this.generations>24) this.initialized = true
+                    var tokenCount = tokenizer.encode(this.default_prompt_settings.prompt).length
+                    this.responseTimes.push({
+                        time:Date.now()-responseGot,
+                        inputTokens:tokenCount,
+                        outputTokens:this.default_prompt_settings.number_generated_tokens,
+                    })
+                    this.generationTimes.push({
+                        time:response.total_elapsed_time,
+                        inputTokens:tokenCount,
+                        outputTokens:this.default_prompt_settings.number_generated_tokens,
+                    })
                     resolve(response)
                 }
             } catch (error) {
