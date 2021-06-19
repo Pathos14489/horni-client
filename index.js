@@ -24,7 +24,7 @@ export default class HorniClient {
             requested:0,
             successful:0
         }
-        this.priority = 0.6 //2.7B:1 | 6B:0.6  TO-DO: Eventually having this be determined by the health-check, maybe if that also returned what model the server was hosting. The idea is for the server priority to self scale with generation times, model type(2.7B/6B), and the ratio between number of total generations, and how many are labeled as retries.
+        this.priority = 0.6 //2.7B:1 | 6B:0.6  TO-DO: Eventually having this be determined by the health_check, maybe if that also returned what model the server was hosting. The idea is for the server priority to self scale with generation times, model type(2.7B/6B), and the ratio between number of total generations, and how many are labeled as retries.
         this.responseTimes = []
         this.generationTimes = []
         this.startTime = Date.now()
@@ -143,6 +143,12 @@ export default class HorniClient {
         if(this.verbose) console.log(`Running Horni-Client Metrics Initialization...\n`);
         var startTime           = Date.now()
         var input               = `This is a`
+        var old = this.default_prompt_settings.number_generated_tokens
+        this.default_prompt_settings.number_generated_tokens = 1
+        await this.sendPrompt(input) // Sends initial prompt to get slow generation out of the way.
+        this.responseTimes.pop() // Removes bad stat
+        this.generationTimes.pop() // Removes bad stat
+        this.default_prompt_settings.number_generated_tokens = old
         var testCount           = 25
         var tests = []
         for (let index = 0; index < testCount; index++) tests.push(this.sendPrompt(input)) // Adds tests to list.
@@ -164,10 +170,14 @@ export default class HorniClient {
             if(this.verbose) console.log(this.queue); // Debug output
             if(!this.generating){
                 var prompt = this.queue.shift() // Gets latest
-                var elapsedTime = Date.now()-prompt.timestamp
-                if(this.verbose) console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
-                var responses = await this.sendPrompt(prompt.prompt)
-                prompt.resolve(responses)
+                console.log(prompt);
+                try {
+                    var elapsedTime = Date.now()-prompt.timestamp
+                    if(this.verbose) console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
+                    prompt.resolve(await this.sendPrompt(prompt.prompt))
+                } catch (error) {
+                    prompt.reject(error)
+                }
             }
         }else{
             throw "Queue is empty!"
@@ -179,7 +189,9 @@ export default class HorniClient {
      * @return Array of token indexes
      */
     getTokens(prompt) {
-        return tokenizer.encode(prompt)
+        if(!prompt) return []
+        if(prompt.length<1) return []
+        else return tokenizer.encode(prompt)
     }
     /**
      * Sends a text and returns token indexes
@@ -192,6 +204,8 @@ export default class HorniClient {
     async healthCheck() {
         var res = await axios(`${this.apiURL}/health_check`)
         if(!res || res.data != "ok") console.error("Horni API Health Check Failed!")
+        if(!res) res = {msg:"Server down"}
+        return res
     }
 
     /**
@@ -207,10 +221,10 @@ export default class HorniClient {
             .map((token) => HorniClient.indexed_vocab[token])
             .join('')
 
-        const tokens = (await this.sendPostRequest(`${this.apiURL}/string-tokens`, {
+        var tokens = (await axios.post(`${this.apiURL}/string-tokens`, {
             string: tokenString,
             case_sensitive: caseSensitive
-        }))
+        })).data
 
         return tokens.map((token) => [
             token, HorniClient.indexed_vocab[token]
@@ -222,7 +236,7 @@ export default class HorniClient {
      * @param prompt
      * @return {Promise<string[]>} list of results (size defined by nb_answer option)
      */
-    async sendPrompt(prompt = "",) {
+    async sendPrompt(prompt = "",options = {}) {
         return new Promise(async(resolve, reject) => {
             try {
                 var responseGot = Date.now()
@@ -235,14 +249,34 @@ export default class HorniClient {
                         timestamp:responseGot
                     })
                 }else{
-                    this.default_prompt_settings.prompt = prompt
                     this.generating = true
-                    var response = await this.sendPostRequest(`${this.apiURL}/prompt`, this.default_prompt_settings)
+                    var backup = this.default_prompt_settings
+                    // Intentionally setting the default values here instead of letting it be handled at the API level
+                    this.default_prompt_settings.prompt = prompt
+                    this.default_prompt_settings.nb_answer                   = options.nb_answer ?? this.default_prompt_settings.nb_answer
+                    this.default_prompt_settings.number_generated_tokens     = options.number_generated_tokens ?? this.default_prompt_settings.number_generated_tokens
+                    this.default_prompt_settings.temperature                 = options.temperature ?? this.default_prompt_settings.temperature
+                    this.default_prompt_settings.top_k                       = options.top_k ?? this.default_prompt_settings.top_k
+                    this.default_prompt_settings.top_p                       = options.top_p ?? this.default_prompt_settings.top_p
+                    this.default_prompt_settings.tail_free_sampling          = options.tail_free_sampling ?? this.default_prompt_settings.tail_free_sampling
+                    this.default_prompt_settings.repetition_penalty          = options.repetition_penalty ?? this.default_prompt_settings.repetition_penalty
+                    this.default_prompt_settings.repetition_penalty_range    = options.repetition_penalty_range ?? this.default_prompt_settings.repetition_penalty_range
+                    this.default_prompt_settings.repetition_penalty_slope    = options.repetition_penalty_slope ?? this.default_prompt_settings.repetition_penalty_slope
+                    this.default_prompt_settings.enable_tfs                  = options.enable_tfs ?? this.default_prompt_settings.enable_tfs
+                    this.default_prompt_settings.enable_top_k                = options.enable_top_k ?? this.default_prompt_settings.enable_top_k
+                    this.default_prompt_settings.enable_top_p                = options.enable_top_p ?? this.default_prompt_settings.enable_top_p
+                    this.default_prompt_settings.prevent_square_brackets     = options.prevent_square_brackets ?? this.default_prompt_settings.prevent_square_brackets
+                    this.default_prompt_settings.prevent_angle_brackets      = options.prevent_angle_brackets ?? this.default_prompt_settings.prevent_angle_brackets
+                    this.default_prompt_settings.prevent_curly_brackets      = options.prevent_curly_brackets ?? this.default_prompt_settings.prevent_curly_brackets
+                    this.default_prompt_settings.banned_token_indexes        = options.banned_token_indexes ?? this.default_prompt_settings.banned_token_indexes
+                    this.default_prompt_settings.banned_strings              = options.banned_strings ?? this.default_prompt_settings.banned_strings
+                    var response = (await axios.post(`${this.apiURL}prompt`, this.default_prompt_settings)).data
+                    this.default_prompt_settings = backup
                     this.generating = false
                     if(this.queue.length>0) this.checkQueue()
                     this.generations++
                     if(this.generations>24) this.initialized = true
-                    var tokenCount = tokenizer.encode(this.default_prompt_settings.prompt).length
+                    var tokenCount = tokenizer.encode(prompt).length
                     this.responseTimes.push({
                         time:Date.now()-responseGot,
                         inputTokens:tokenCount,
@@ -257,34 +291,9 @@ export default class HorniClient {
                 }
             } catch (error) {
                 console.trace(error)
-                reject()
+                reject(error)
             }
 
-        })
-    }
-
-    /**
-     * Sends a POST request to given url
-     * @param url
-     * @param data
-     * @return {Promise<unknown>}
-     */
-    async sendPostRequest(url, data) {
-        if(this.verbose) console.log("Sending Request",data);
-        return new Promise(async(resolve, reject) => {
-            try {
-                const answer = (await axios.post(url, data)).data
-                if (answer) {
-                    if(this.verbose) console.log("Return Request",answer);
-                    resolve(answer)
-                } else {
-                    if(this.verbose) console.trace("No Answer")
-                    reject()
-                }
-            } catch (error) {
-                console.trace(error)
-                reject()
-            }
         })
     }
 }

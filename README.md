@@ -19,12 +19,5 @@ You have to connect to a running instance of the server for it to work.
 		console.log(output);
 	}
 	main().then()
-
-## High Latency When Utilizing Queue?
-If you notice high latency when utilizing the queue, and especially when running the metrics test, it is likely due to lazy queue checking for performance. The lazy queueChecker can be disabled and the checkQueue method can be called manually if you need to revise the queue to better suit your needs.
-
-	const client = new HorniClient({ "useQueueChecker":false })
-
-The checker can then be re-enabled later.
-
-	client.useQueueChecker = true
+## Metrics
+If you want to have access to the metrics, you need it to have sent at least 25 prompts. This is to give the averages a good dataset to work from. I recommend running the initializeMetrics() method if you want to make sure you have them.
