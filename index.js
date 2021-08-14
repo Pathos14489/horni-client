@@ -18,6 +18,7 @@ export default class HorniClient {
         this.generating = false // For tracking when a generation is in progress
         this.queue = []
         this.verbose = default_prompt_settings.verbose ?? false
+        this.name = default_prompt_settings.name ?? false
         this.useQueueChecker = true
         this.generations = 0
         this.getTokenRequests = {
@@ -75,13 +76,20 @@ export default class HorniClient {
             averageResponseTimePerInputToken:inputResponsesAverage,
             averageResponseTimePerOutputToken:outputResponsesAverage,
         }
-        var appeal = ((this.priority*(recentOutputAverage/this.averageTokenTimes.averageResponseTimePerOutputToken))*this.queueSize)*this.generating?2:1
+        if(this.generating){
+            var appeal = ((this.priority*(recentOutputAverage/this.averageTokenTimes.averageResponseTimePerOutputToken))*(this.queueSize+1))*2
+        }else{
+            var appeal = ((this.priority*(recentOutputAverage/this.averageTokenTimes.averageResponseTimePerOutputToken))*(this.queueSize+1))*1
+        }
         return {
+            name:this.name,
             appeal,
+            priority:this.priority,
             recentOutputAverage,
             recentInputAverage,
             recentTimings:timings25,
             generationStats:{
+                generating:this.generating,
                 count:this.generations,
                 timings:this.averageTokenTimes
             }
@@ -140,37 +148,39 @@ export default class HorniClient {
         return this.totalGeneratedTokens/this.generationTimes.length
     }
     async initializeMetrics(){
-        if(this.verbose) console.log(`Running Horni-Client Metrics Initialization...\n`);
-        var startTime           = Date.now()
-        var input               = `This is a`
-        var old = this.default_prompt_settings.number_generated_tokens
-        this.default_prompt_settings.number_generated_tokens = 1
-        await this.sendPrompt(input) // Sends initial prompt to get slow generation out of the way.
-        this.responseTimes.pop() // Removes bad stat
-        this.generationTimes.pop() // Removes bad stat
-        this.default_prompt_settings.number_generated_tokens = old
-        var testCount           = 25
-        var tests = []
-        for (let index = 0; index < testCount; index++) tests.push(this.sendPrompt(input)) // Adds tests to list.
-        var completedTests      = await Promise.all(tests)
-        var clientTimeElapsed   = Date.now()-startTime
-        var serverTime          = completedTests.map((a)=>a.total_elapsed_time)
-        var totalServerTime     = serverTime.reduce((a,b)=>a+b)
-        var testResults         = completedTests.map(test=>input+test.results[0].content)
-        var output              = `Tokens Per Request: ${this.default_prompt_settings.number_generated_tokens} - Request Count: ${testCount} - Server Generation Time: ${totalServerTime}ms - Latency: ${`${clientTimeElapsed-totalServerTime}`.split(".")[0]}ms}` 
-        if(this.verbose) console.log(testResults);
-        if(this.verbose) console.log(output);
-        if(this.verbose) console.log(this.stats);
-        this.initialized = true
+        try {
+            if(this.verbose) console.log(`Running Horni-Client Metrics Initialization...\n`);
+            var startTime           = Date.now()
+            var input               = `This is a`
+            var old = this.default_prompt_settings.number_generated_tokens
+            this.default_prompt_settings.number_generated_tokens = 1
+            await this.sendPrompt(input) // Sends initial prompt to get slow generation out of the way.
+            this.responseTimes.pop() // Removes bad stat
+            this.generationTimes.pop() // Removes bad stat
+            this.default_prompt_settings.number_generated_tokens = old
+            var testCount           = 25
+            var tests = []
+            for (let index = 0; index < testCount; index++) tests.push(this.sendPrompt(input)) // Adds tests to list.
+            var completedTests      = await Promise.all(tests)
+            var clientTimeElapsed   = Date.now()-startTime
+            var serverTime          = completedTests.map((a)=>a.total_elapsed_time)
+            var totalServerTime     = serverTime.reduce((a,b)=>a+b)
+            var testResults         = completedTests.map(test=>input+test.results[0].content)
+            var output              = `Tokens Per Request: ${this.default_prompt_settings.number_generated_tokens} - Request Count: ${testCount} - Server Generation Time: ${totalServerTime}ms - Latency: ${`${clientTimeElapsed-totalServerTime}`.split(".")[0]}ms}` 
+            if(this.verbose) console.log(testResults);
+            if(this.verbose) console.log(output);
+            if(this.verbose) console.log(this.stats);
+            this.initialized = true
+        } catch (error) {
+            throw console.error("Initialization Error:\n"+error)
+        }
     }
     async checkQueue(){
         if(!this.queue) this.queue = []
-        if(this.verbose) console.log("Check Loop",this.queue,this.queue.length);
+        if(this.verbose) console.log("Check Loop",this.queue.length);
         if(this.queue.length>0) {
-            if(this.verbose) console.log(this.queue); // Debug output
             if(!this.generating){
                 var prompt = this.queue.shift() // Gets latest
-                console.log(prompt);
                 try {
                     var elapsedTime = Date.now()-prompt.timestamp
                     if(this.verbose) console.log(`Resolving queued prompt that has been queue for ${elapsedTime}ms:`,prompt); // Debug output
@@ -202,10 +212,14 @@ export default class HorniClient {
         return tokenizer.decode(tokens)
     }
     async healthCheck() {
-        var res = await axios(`${this.apiURL}/health_check`)
-        if(!res || res.data != "ok") console.error("Horni API Health Check Failed!")
-        if(!res) res = {msg:"Server down"}
-        return res
+        try {
+            var res = await axios(`${this.apiURL}health_check`)
+            if(!res || res.data != "ok") console.error("Horni API Health Check Failed!")
+            if(!res) res = {msg:"Server down"}
+            return res
+        } catch (error) {
+            return error
+        }
     }
 
     /**
@@ -220,15 +234,18 @@ export default class HorniClient {
         const tokenString = (await this.getTokens(prompt))
             .map((token) => HorniClient.indexed_vocab[token])
             .join('')
+        try {
+            var tokens = (await axios.post(`${this.apiURL}string-tokens`, {
+                string: tokenString,
+                case_sensitive: caseSensitive
+            })).data
 
-        var tokens = (await axios.post(`${this.apiURL}/string-tokens`, {
-            string: tokenString,
-            case_sensitive: caseSensitive
-        })).data
-
-        return tokens.map((token) => [
-            token, HorniClient.indexed_vocab[token]
-        ])
+            return tokens.map((token) => [
+                token, HorniClient.indexed_vocab[token]
+            ])
+        } catch (error) {
+            return error
+        }
     }
 
     /**
@@ -270,24 +287,33 @@ export default class HorniClient {
                     this.default_prompt_settings.prevent_curly_brackets      = options.prevent_curly_brackets ?? this.default_prompt_settings.prevent_curly_brackets
                     this.default_prompt_settings.banned_token_indexes        = options.banned_token_indexes ?? this.default_prompt_settings.banned_token_indexes
                     this.default_prompt_settings.banned_strings              = options.banned_strings ?? this.default_prompt_settings.banned_strings
-                    var response = (await axios.post(`${this.apiURL}prompt`, this.default_prompt_settings)).data
-                    this.default_prompt_settings = backup
-                    this.generating = false
-                    if(this.queue.length>0) this.checkQueue()
-                    this.generations++
-                    if(this.generations>24) this.initialized = true
-                    var tokenCount = tokenizer.encode(prompt).length
-                    this.responseTimes.push({
-                        time:Date.now()-responseGot,
-                        inputTokens:tokenCount,
-                        outputTokens:this.default_prompt_settings.number_generated_tokens,
-                    })
-                    this.generationTimes.push({
-                        time:response.total_elapsed_time,
-                        inputTokens:tokenCount,
-                        outputTokens:this.default_prompt_settings.number_generated_tokens,
-                    })
-                    resolve(response)
+                    var response = await axios.post(`${this.apiURL}prompt`, this.default_prompt_settings)
+                        .catch(err=>{
+                            reject(err)
+                        })
+                    if(response || typeof response != "undefined"){
+                        if(!response.data) reject("API Error")
+                        response = response.data
+                        this.default_prompt_settings = backup
+                        this.generating = false
+                        if(this.queue.length>0) this.checkQueue()
+                        this.generations++
+                        if(this.generations>24) this.initialized = true
+                        var tokenCount = tokenizer.encode(prompt).length
+                        this.responseTimes.push({
+                            time:Date.now()-responseGot,
+                            inputTokens:tokenCount,
+                            outputTokens:this.default_prompt_settings.number_generated_tokens,
+                        })
+                        this.generationTimes.push({
+                            time:response.total_elapsed_time,
+                            inputTokens:tokenCount,
+                            outputTokens:this.default_prompt_settings.number_generated_tokens,
+                        })
+                        resolve(response)
+                    }else{
+                        reject("API Unresponsive")
+                    }
                 }
             } catch (error) {
                 console.trace(error)
