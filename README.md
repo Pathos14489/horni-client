@@ -14,10 +14,11 @@ You have to connect to a running instance of the server for it to work.
 	async function main() {
 		var input       = `This is a`
 		var generation  = await client.sendPrompt(input)
-		var tokens      = generation.prompt.tokens.length+generation.results[0].tokens.length
-		var output      = `${generation.total_elapsed_time}ms | ${tokens} Tokens w/prompt | ${input}${generation.results[0].content}`
+		var result 	= generation.results[0]
+		var tokens      = result.tokens.length
+		var output      = `${generation.total_elapsed_time}ms | ${tokens} Tokens | ${input}${result.content}`
 		console.log(output);
 	}
-	main().then()
+	main()
 ## Metrics
 If you want to have access to the metrics, you need it to have sent at least 25 prompts. This is to give the averages a good dataset to work from. I recommend running the initializeMetrics() method if you want to make sure you have them.
